@@ -1,0 +1,341 @@
+:root {
+  --bg: #1c1a22;
+  --bg-elevated: #24212c;
+  --card: #2b2733;
+  --card-border: #3c3646;
+  --amber: #e8a55c;
+  --amber-soft: #f0c48c;
+  --text: #f1ece3;
+  --text-muted: #b3aab8;
+  --danger: #d9736a;
+  --success: #8fbf8a;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 20% -10%, #322a37 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+.planner-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+.planner-shell.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  text-align: center;
+  padding: 20px;
+}
+
+.planner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+}
+
+.planner-kicker {
+  margin: 0 0 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--amber-soft);
+}
+
+.planner-header h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.planner-identity {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tab-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.tab-nav button {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-nav button:hover {
+  border-color: var(--amber);
+  color: var(--text);
+}
+
+.tab-nav button.active {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #211a12;
+  font-weight: 600;
+}
+
+.tab-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.tab-panel-header h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.tab-blurb {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 520px;
+}
+
+.countdown-badge {
+  background: var(--card);
+  border: 1px solid var(--amber);
+  color: var(--amber-soft);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.summary-strip {
+  display: flex;
+  gap: 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--amber-soft);
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.record-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.record-card.invite-card.revoked {
+  opacity: 0.5;
+}
+
+.you-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--amber);
+  color: #211a12;
+  padding: 2px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.record-card-new {
+  border-color: var(--amber);
+}
+
+.record-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  flex: 1;
+}
+
+.record-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 90px;
+}
+
+.record-field-full {
+  min-width: 100%;
+}
+
+.record-field-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.record-field-value {
+  font-size: 14px;
+}
+
+.link-value {
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--amber-soft);
+}
+
+.record-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.record-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.field-small {
+  max-width: 180px;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="date"],
+.field select,
+.field textarea {
+  background: var(--bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  align-self: flex-start;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.record-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn {
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #211a12;
+  font-weight: 600;
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.btn-danger {
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.invite-form,
+.overview-form {
+  background: var(--bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
