@@ -27,6 +27,7 @@ class MqttClient:
         self.state = PrinterState()
         self.on_update: Callable[[PrinterState], None] | None = None
         self.on_raw: Callable[[dict[str, Any]], None] | None = None
+        self.on_connection: Callable[[bool, str], None] | None = None
         self._first_report = threading.Event()
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"p1s-controller-{serial[-6:]}")
         self._client.username_pw_set("bblp", access_code)
@@ -36,6 +37,7 @@ class MqttClient:
         self._client.tls_insecure_set(True)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
+        self._client.on_disconnect = self._on_disconnect
         self.report_topic = f"device/{serial}/report"
         self.request_topic = f"device/{serial}/request"
 
@@ -54,9 +56,17 @@ class MqttClient:
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         if reason_code != 0:
             log.error("MQTT connect failed: %s", reason_code)
+            if self.on_connection:
+                self.on_connection(False, f"Connection refused: {reason_code}")
             return
+        if self.on_connection:
+            self.on_connection(True, "Connected")
         client.subscribe(self.report_topic)
         self._publish(commands.pushall())
+
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
+        if self.on_connection:
+            self.on_connection(False, f"Disconnected: {reason_code}")
 
     def _on_message(self, client, userdata, msg):
         try:

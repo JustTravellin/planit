@@ -41,6 +41,12 @@ def read(path: str | Path) -> PlateInfo:
     return info
 
 
+def read_gcode(path: str | Path, plate: int = 1) -> str:
+    """Return the sliced G-code text for a plate."""
+    with zipfile.ZipFile(path) as zf:
+        return zf.read(f"Metadata/plate_{plate}.gcode").decode("utf-8", errors="replace")
+
+
 def _parse_slice_info(xml_bytes: bytes, info: PlateInfo) -> None:
     root = ET.fromstring(xml_bytes)
     plate = root.find("plate")

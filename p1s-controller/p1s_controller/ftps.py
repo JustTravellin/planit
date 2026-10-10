@@ -5,6 +5,7 @@ import ftplib
 import socket
 import ssl
 from pathlib import Path
+from typing import Callable
 
 
 class _ImplicitFtpTls(ftplib.FTP_TLS):
@@ -32,7 +33,8 @@ class _ImplicitFtpTls(ftplib.FTP_TLS):
         return conn, size
 
 
-def upload(ip: str, access_code: str, local_path: str | Path, remote_name: str | None = None, timeout: float = 30.0) -> str:
+def upload(ip: str, access_code: str, local_path: str | Path, remote_name: str | None = None, timeout: float = 30.0,
+           progress: Callable[[int, int], None] | None = None) -> str:
     """Upload a file to the printer and return the remote file name."""
     local_path = Path(local_path)
     remote_name = remote_name or local_path.name
@@ -44,8 +46,17 @@ def upload(ip: str, access_code: str, local_path: str | Path, remote_name: str |
     try:
         ftp.login("bblp", access_code)
         ftp.prot_p()
+        total = local_path.stat().st_size
+        sent = 0
+
+        def _cb(chunk: bytes) -> None:
+            nonlocal sent
+            sent += len(chunk)
+            if progress:
+                progress(sent, total)
+
         with local_path.open("rb") as fh:
-            ftp.storbinary(f"STOR {remote_name}", fh)
+            ftp.storbinary(f"STOR {remote_name}", fh, callback=_cb)
     finally:
         try:
             ftp.quit()

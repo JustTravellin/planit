@@ -13,12 +13,30 @@ your LAN.
 | FTPS upload | Done, **not yet tested on a real printer** |
 | `.gcode.3mf` reader and AMS slot suggestion | Done |
 | CLI | Done |
-| PySide6 desktop UI, PyInstaller build, camera | Not started |
+| Desktop window (dashboard, temperature graph, AMS, file library, layer preview, send-and-print, terminal, history, filament inventory, notifications) | Done, tested offscreen with recorded data; **not yet run against a real printer** |
+| Windows installer (PyInstaller), camera view and timelapse, camera failure detection | Not started |
 
 The protocol layer follows the community-documented local protocol
 (OpenBambuAPI). It was written without access to a real printer, so the first run
 on yours is the real test. Message shapes, especially `project_file` and the
 AMS mapping, may need small fixes.
+
+## Desktop window
+
+```
+pip install -e ".[ui]"
+p1s-gui
+```
+
+Tabs: **Dashboard** (live state, temperature graph, AMS spools, controls), **Library**
+(your `.gcode.3mf` files with thumbnails, tags, search, a layer-by-layer G-code preview,
+and a send dialog that maps filaments to AMS slots and shows pre-flight warnings),
+**Terminal** (G-code console), **History** (every print with duration, filament and
+success rate), **Filament** (spool inventory, drawn down automatically when a print started
+from this app finishes) and **Settings**.
+
+The window connects read-only. Tick **Allow control** in the toolbar before pausing,
+stopping, changing temperatures or sending a print.
 
 ## One-time printer setup
 
