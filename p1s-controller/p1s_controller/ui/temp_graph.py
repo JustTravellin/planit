@@ -25,11 +25,10 @@ class TempGraph(pg.PlotWidget):
         self.getAxis("left").setTextPen(theme.MUTED)
         self.setLabel("bottom", "seconds ago")
         self.addLegend(offset=(10, 5))
-        self._data = {k: deque(maxlen=WINDOW_SECONDS) for k in ("t", "nozzle", "bed", "chamber", "nozzle_t", "bed_t")}
+        self._data = {k: deque(maxlen=WINDOW_SECONDS) for k in ("t", "nozzle", "bed", "nozzle_t", "bed_t")}
         self._curves = {
             "nozzle": self.plot(pen=pg.mkPen(theme.BAD, width=2), name="Nozzle"),
             "bed": self.plot(pen=pg.mkPen(theme.WARN, width=2), name="Bed"),
-            "chamber": self.plot(pen=pg.mkPen(theme.ACCENT, width=2), name="Chamber"),
             "nozzle_t": self.plot(pen=pg.mkPen(theme.BAD, width=1, style=Qt.DashLine)),
             "bed_t": self.plot(pen=pg.mkPen(theme.WARN, width=1, style=Qt.DashLine)),
         }
@@ -41,8 +40,8 @@ class TempGraph(pg.PlotWidget):
         if now - self._last < 1.0:  # at most one point per second
             return
         self._last = now
-        for key, value in zip(("t", "nozzle", "bed", "chamber", "nozzle_t", "bed_t"),
-                              (now, nozzle, bed, chamber, nozzle_t, bed_t)):
+        for key, value in zip(("t", "nozzle", "bed", "nozzle_t", "bed_t"),
+                              (now, nozzle, bed, nozzle_t, bed_t)):
             self._data[key].append(value)
         xs = [t - now for t in self._data["t"]]
         for key, curve in self._curves.items():

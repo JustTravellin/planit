@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap, QColor
-from PySide6.QtWidgets import (QCheckBox, QLabel, QMainWindow, QMessageBox, QSystemTrayIcon, QTabWidget, QToolBar,
-                               QWidget, QSizePolicy)
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QListWidget, QMainWindow, QMessageBox, QStackedWidget,
+                               QSystemTrayIcon, QToolBar, QWidget, QSizePolicy)
 
 from ..db import Database
 from . import theme
@@ -23,6 +24,40 @@ EVENT_TEXT = {
 }
 
 
+class SideTabs(QWidget):
+    """Left navigation rail + page stack. Same small API as QTabWidget."""
+
+    def __init__(self):
+        super().__init__()
+        self.nav = QListWidget()
+        self.nav.setObjectName("nav")
+        self.nav.setFixedWidth(168)
+        self.nav.setFocusPolicy(Qt.NoFocus)
+        self.stack = QStackedWidget()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self.nav)
+        lay.addWidget(self.stack, 1)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+
+    def addTab(self, widget: QWidget, title: str) -> int:
+        self.nav.addItem(title)
+        idx = self.stack.addWidget(widget)
+        if idx == 0:
+            self.nav.setCurrentRow(0)
+        return idx
+
+    def setCurrentWidget(self, widget: QWidget) -> None:
+        self.nav.setCurrentRow(self.stack.indexOf(widget))
+
+    def setCurrentIndex(self, idx: int) -> None:
+        self.nav.setCurrentRow(idx)
+
+    def currentWidget(self) -> QWidget:
+        return self.stack.currentWidget()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, bridge: PrinterBridge, db: Database):
         super().__init__()
@@ -38,7 +73,7 @@ class MainWindow(QMainWindow):
         self.history = HistoryTab(bridge, db)
         self.filament = FilamentTab(bridge, db)
         self.settings = SettingsTab(bridge)
-        tabs = QTabWidget()
+        tabs = SideTabs()
         for widget, title in ((self.dashboard, "Dashboard"), (self.library, "Library"), (self.control, "Control"),
                               (self.terminal, "Terminal"), (self.history, "History"), (self.filament, "Filament"),
                               (self.health, "Health"), (self.settings, "Settings")):
@@ -48,13 +83,21 @@ class MainWindow(QMainWindow):
 
         bar = QToolBar()
         bar.setMovable(False)
+        bar.setObjectName("header")
+        app_name = QLabel("P1S Controller")
+        app_name.setObjectName("brand")
         self.conn_label = QLabel("● Not connected")
         self.conn_label.setStyleSheet(f"color: {theme.MUTED}; padding: 0 8px;")
+        self.state_chip = QLabel("")
+        self.state_chip.setObjectName("chip")
+        self.state_chip.hide()
         self.control_box = QCheckBox("Allow control")
         self.control_box.setToolTip("Off = read-only. Turn on to pause, stop, send prints, set temperatures.")
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        bar.addWidget(app_name)
         bar.addWidget(self.conn_label)
+        bar.addWidget(self.state_chip)
         bar.addWidget(spacer)
         bar.addWidget(self.control_box)
         self.addToolBar(bar)
@@ -68,6 +111,7 @@ class MainWindow(QMainWindow):
 
         self.control_box.toggled.connect(self._control_toggled)
         bridge.connectionChanged.connect(self._on_connection)
+        bridge.stateChanged.connect(self._on_state)
         bridge.event.connect(self._on_event)
         bridge.alert.connect(self._on_alert)
         self.settings.wizardRequested.connect(self.open_wizard)
@@ -89,6 +133,15 @@ class MainWindow(QMainWindow):
         color = theme.OK if ok else theme.MUTED
         self.conn_label.setText(f"● {message}")
         self.conn_label.setStyleSheet(f"color: {color}; padding: 0 8px;")
+
+    def _on_state(self, s) -> None:
+        color = theme.STATE_COLORS.get(s.gcode_state, theme.MUTED)
+        text = s.gcode_state.title()
+        if s.gcode_state in ("RUNNING", "PAUSE"):
+            text += f" {s.percent}% · {s.remaining_minutes} min left"
+        self.state_chip.setText(text)
+        self.state_chip.setStyleSheet(f"color: {color}; border: 1px solid {color};")
+        self.state_chip.show()
 
     def _on_event(self, event: str, job: str) -> None:
         if self.tray and self.settings.notify.isChecked() and event in EVENT_TEXT:

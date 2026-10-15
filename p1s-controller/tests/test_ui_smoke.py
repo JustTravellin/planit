@@ -122,6 +122,9 @@ def test_library_and_preview(window, app):
     lib = window.library
     assert lib.list.count() == 1  # plain.3mf is skipped
     lib.list.setCurrentRow(0)
+    lib.preview.wait()
+    assert lib.preview.slider.maximum() == 29 and lib.preview.sliced_btn.isEnabled()
+    assert lib.send_btn.isEnabled() and "Sliced and ready" in lib.status.text()
     assert "Benchy".lower() in lib.title.text().lower() or "benchy" in lib.title.text()
     assert "PETG" in lib.details.text()
     lib.tags.setText("test, gift")

@@ -13,6 +13,7 @@ your LAN.
 | FTPS upload | Done, **not yet tested on a real printer** |
 | `.gcode.3mf` reader and AMS slot suggestion | Done |
 | CLI | Done |
+| 3D plate view (model on the plate, fit check, sliced layer view), sidebar UI | Done; verified with real 3MF files (OpenGL). Sliced view only tested with synthetic G-code |
 | Desktop window: dashboard, temperature graph, AMS, file library, layer preview, send-and-print, terminal, history, filament inventory, notifications | Done; tested offscreen with recorded data |
 | Manual controls (jog, home, bed level, fans, extrude, AMS load/unload) | Done; tested offscreen against a fake printer connection |
 | Health tab and alerts (HMS codes, print errors, low filament, temperature, Wi-Fi, firmware list) | Done; tested with recorded reports |

@@ -9,8 +9,9 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QLis
 
 from .. import threemf
 from ..db import Database
+from . import theme
 from .bridge import PrinterBridge
-from .gcode_preview import GcodePreview
+from .gcode_preview import PlatePreview
 from .send_dialog import SendDialog
 from .util import fmt_seconds
 
@@ -34,38 +35,50 @@ class Library(QWidget):
         top.addWidget(refresh)
 
         self.list = QListWidget()
-        self.list.setViewMode(QListWidget.IconMode)
-        self.list.setIconSize(QSize(120, 120))
-        self.list.setResizeMode(QListWidget.Adjust)
-        self.list.setMovement(QListWidget.Static)
-        self.list.setGridSize(QSize(150, 170))
-        self.list.setWordWrap(True)
+        self.list.setIconSize(QSize(64, 64))
+        self.list.setSpacing(2)
+        self.list.setMinimumWidth(240)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list.setTextElideMode(Qt.ElideRight)
 
-        side = QWidget()
-        sl = QVBoxLayout(side)
+        self.preview = PlatePreview()
+
+        inspector = QWidget()
+        inspector.setObjectName("inspector")
+        inspector.setFixedWidth(300)
+        sl = QVBoxLayout(inspector)
         self.title = QLabel("Select a file")
         self.title.setObjectName("big")
         self.title.setWordWrap(True)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
         self.details = QLabel("")
         self.details.setTextFormat(Qt.RichText)
+        self.details.setWordWrap(True)
+        self.process = QLabel("")
+        self.process.setTextFormat(Qt.RichText)
+        self.process.setWordWrap(True)
         self.tags = QLineEdit(placeholderText="Tags, comma separated")
-        self.preview = GcodePreview()
-        btns = QHBoxLayout()
-        self.preview_btn = QPushButton("Preview layers")
         self.send_btn = QPushButton("Send / print…")
         self.send_btn.setObjectName("primary")
-        btns.addWidget(self.preview_btn)
-        btns.addWidget(self.send_btn)
-        for w in (self.title, self.details, self.tags):
+        for text, w in (("", self.title), ("", self.status), ("PRINT", self.details), ("PROCESS", self.process),
+                        ("TAGS", self.tags)):
+            if text:
+                head = QLabel(text)
+                head.setObjectName("section")
+                sl.addWidget(head)
             sl.addWidget(w)
-        sl.addLayout(btns)
-        sl.addWidget(self.preview, 1)
+        sl.addStretch(1)
+        sl.addWidget(self.send_btn)
 
         split = QSplitter()
         split.addWidget(self.list)
-        split.addWidget(side)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 2)
+        split.addWidget(self.preview)
+        split.addWidget(inspector)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setStretchFactor(2, 0)
+        split.setSizes([260, 700, 300])
         lay = QVBoxLayout(self)
         lay.addLayout(top)
         lay.addWidget(split, 1)
@@ -75,9 +88,9 @@ class Library(QWidget):
         self.search.textChanged.connect(self._apply_filter)
         self.list.currentItemChanged.connect(self._selected)
         self.tags.editingFinished.connect(self._save_tags)
-        self.preview_btn.clicked.connect(self._preview)
         self.send_btn.clicked.connect(self._send)
-        self._set_buttons(False)
+        self.send_btn.setEnabled(False)
+        self.tags.setEnabled(False)
         self.reload()
 
     # ---- folder / listing
@@ -102,14 +115,18 @@ class Library(QWidget):
         self.folder_label.setText(str(folder) if folder else "No folder chosen")
         if not folder or not folder.is_dir():
             return
-        for path in sorted(folder.glob("*.gcode.3mf"), key=lambda p: p.stat().st_mtime, reverse=True):
+        files = sorted(folder.glob("*.3mf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in files:
             try:
-                info = threemf.read(path)
+                info = threemf.read(path, require_gcode=False)
             except Exception:
-                continue  # not a sliced file
+                continue  # not a readable 3MF
             self.infos[str(path)] = info
-            item = QListWidgetItem(path.name.removesuffix(".gcode.3mf"))
+            name = path.name.removesuffix(".gcode.3mf").removesuffix(".3mf")
+            sub = f"{fmt_seconds(info.print_seconds)} · {info.weight_grams:.0f} g" if info.sliced else "Not sliced"
+            item = QListWidgetItem(f"{name}" + chr(10) + sub)
             item.setData(Qt.UserRole, str(path))
+            item.setData(Qt.UserRole + 1, name)
             if info.thumbnail_png:
                 pm = QPixmap()
                 pm.loadFromData(info.thumbnail_png)
@@ -130,36 +147,50 @@ class Library(QWidget):
         item = self.list.currentItem()
         return Path(item.data(Qt.UserRole)) if item else None
 
-    def _set_buttons(self, on: bool) -> None:
-        self.preview_btn.setEnabled(on)
-        self.send_btn.setEnabled(on)
-        self.tags.setEnabled(on)
-
     def _selected(self, item, _prev=None) -> None:
         if item is None:
             self.title.setText("Select a file")
             self.details.setText("")
-            self._set_buttons(False)
+            self.process.setText("")
+            self.status.setText("")
+            self.send_btn.setEnabled(False)
+            self.tags.setEnabled(False)
+            self.preview.clear()
             return
         path = item.data(Qt.UserRole)
         info = self.infos[path]
-        self.title.setText(item.text())
-        chips = "".join(
-            f"<span style='color:#{f.color}'>●</span> {f.material} {f.used_grams:.1f} g &nbsp; " for f in info.filaments)
-        self.details.setText(f"{fmt_seconds(info.print_seconds)} · {info.weight_grams:.1f} g<br>{chips}")
+        self.title.setText(item.data(Qt.UserRole + 1))
+        if info.sliced:
+            wrong = bool(info.printer) and "P1S" not in info.printer.upper()
+            self.status.setText(
+                f"<span style='color:{theme.OK}'>● Sliced and ready to print</span>" if not wrong else
+                f"<span style='color:{theme.WARN}'>● Sliced for {info.printer}, not a P1S.</span> Re-slice for the "
+                f"P1S before printing.")
+            chips = "".join(f"<br><span style='color:#{f.color}'>●</span> {f.material} &nbsp;{f.used_grams:.1f} g"
+                            for f in info.filaments)
+            self.details.setText(f"<b>{fmt_seconds(info.print_seconds)}</b> &nbsp;·&nbsp; "
+                                 f"<b>{info.weight_grams:.1f} g</b>{chips}")
+        else:
+            self.status.setText(f"<span style='color:{theme.WARN}'>● Not sliced yet</span> — open it in Bambu "
+                                f"Studio, slice, and export the plate as .gcode.3mf to print it from here.")
+            self.details.setText("Model preview only")
+        rows = [("Printer", info.printer), ("Nozzle", f"{info.nozzle} mm" if info.nozzle else ""),
+                ("Layer height", f"{info.layer_height:g} mm" if info.layer_height else ""),
+                ("Walls", str(info.walls) if info.walls else ""), ("Infill", info.infill)]
+        self.process.setText("<br>".join(f"<span style='color:{theme.MUTED}'>{k}</span> &nbsp;{v}"
+                                         for k, v in rows if v) or "—")
         self.tags.setText(self.db.get_tags(path))
-        self._set_buttons(True)
+        self.send_btn.setEnabled(info.sliced)
+        self.tags.setEnabled(True)
+        self.preview.set_bed(info.bed, info.max_height)
+        self.preview.colors = ["#" + c for c in info.filament_colors]
+        self.preview.load(Path(path), info.plate, info.sliced)
 
     def _save_tags(self) -> None:
         path = self.current_path()
         if path:
             self.db.set_tags(str(path), self.tags.text())
             self._apply_filter()
-
-    def _preview(self) -> None:
-        path = self.current_path()
-        if path:
-            self.preview.load(path, self.infos[str(path)].plate)
 
     def _send(self) -> None:
         path = self.current_path()
