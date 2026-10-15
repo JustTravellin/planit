@@ -32,12 +32,18 @@ class AmsTray:
 @dataclass
 class PrinterState:
     raw: dict[str, Any] = field(default_factory=dict)
+    modules: dict[str, str] = field(default_factory=dict)  # firmware module name -> version
 
     def update(self, report: dict[str, Any]) -> None:
         """Merge a status report (the full MQTT JSON payload) into the state."""
         section = report.get("print")
         if isinstance(section, dict):
             _merge(self.raw, section)
+        info = report.get("info")
+        if isinstance(info, dict) and isinstance(info.get("module"), list):
+            for mod in info["module"]:
+                if isinstance(mod, dict) and mod.get("name"):
+                    self.modules[str(mod["name"])] = str(mod.get("sw_ver", ""))
 
     # --- print job -------------------------------------------------------
     @property
@@ -96,6 +102,28 @@ class PrinterState:
             "aux": _int(self.raw.get("big_fan1_speed")),
             "chamber": _int(self.raw.get("big_fan2_speed")),
         }
+
+    # --- health ------------------------------------------------------------
+    @property
+    def print_error(self) -> int:
+        return _int(self.raw.get("print_error"))
+
+    @property
+    def hms_codes(self) -> list[str]:
+        """Active HMS entries as 'XXXX_XXXX_XXXX_XXXX' (the form Bambu's wiki uses)."""
+        out = []
+        for item in self.raw.get("hms") or []:
+            attr, code = _int(item.get("attr")), _int(item.get("code"))
+            out.append(f"{attr >> 16:04X}_{attr & 0xFFFF:04X}_{code >> 16:04X}_{code & 0xFFFF:04X}")
+        return out
+
+    @property
+    def wifi_dbm(self) -> int | None:
+        raw = str(self.raw.get("wifi_signal", "")).lower().replace("dbm", "").strip()
+        try:
+            return int(raw)
+        except ValueError:
+            return None
 
     # --- lights -----------------------------------------------------------
     @property

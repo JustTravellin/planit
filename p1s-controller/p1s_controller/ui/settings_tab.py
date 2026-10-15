@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QFormLayout, QLabel, QLineEdit, QPushButton, QWidget, QHBoxLayout, QVBoxLayout
 
 from .. import config
@@ -7,6 +8,8 @@ from .bridge import PrinterBridge
 
 
 class SettingsTab(QWidget):
+    wizardRequested = Signal()
+
     def __init__(self, bridge: PrinterBridge, parent=None):
         super().__init__(parent)
         self.bridge = bridge
@@ -22,12 +25,14 @@ class SettingsTab(QWidget):
         connect = QPushButton("Save and connect")
         connect.setObjectName("primary")
         disconnect = QPushButton("Disconnect")
+        wizard = QPushButton("Setup wizard…")
+        wizard.clicked.connect(self.wizardRequested)
         form = QFormLayout()
         form.addRow("Printer IP", self.ip)
         form.addRow("Serial number", self.serial)
         form.addRow("LAN access code", self.code)
         row = QHBoxLayout()
-        row.addWidget(connect); row.addWidget(disconnect); row.addStretch(1)
+        row.addWidget(connect); row.addWidget(disconnect); row.addWidget(wizard); row.addStretch(1)
         help_ = QLabel("On the printer: Settings → WLAN → enable LAN Only Mode. The IP address and access code are shown there; "
                        "the serial number is under Device. The access code is stored in your system keyring, never in this app's files.")
         help_.setWordWrap(True)

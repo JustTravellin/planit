@@ -63,6 +63,7 @@ class MqttClient:
             self.on_connection(True, "Connected")
         client.subscribe(self.report_topic)
         self._publish(commands.pushall())
+        self._publish(commands.get_version())
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         if self.on_connection:

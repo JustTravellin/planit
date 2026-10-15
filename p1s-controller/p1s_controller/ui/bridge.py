@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, Signal
 
 from ..config import PrinterConfig
 from ..db import Database
+from ..health import Alert, HealthMonitor
 from ..history import HistoryRecorder
 from ..mqtt_client import ControlDisabled, MqttClient
 from ..state import PrinterState
@@ -16,6 +17,7 @@ from ..state import PrinterState
 class PrinterBridge(QObject):
     stateChanged = Signal(object)          # PrinterState snapshot
     event = Signal(str, str)               # event name, job name
+    alert = Signal(object)                 # health.Alert
     connectionChanged = Signal(bool, str)  # connected, message
     controlChanged = Signal(bool)
     rawMessage = Signal(dict)
@@ -27,6 +29,7 @@ class PrinterBridge(QObject):
         self.db = db
         self.state = PrinterState()
         self.recorder = HistoryRecorder(db)
+        self.health = HealthMonitor()
         self.client: MqttClient | None = None
         self.config: PrinterConfig | None = None
         self.connected = False
@@ -68,13 +71,15 @@ class PrinterBridge(QObject):
     def _ingest(self, report: dict) -> None:
         self.rawMessage.emit(report)
         self.state.update(report)
-        if "print" not in report:
+        if "print" not in report and "info" not in report:
             return
-        snapshot = PrinterState(raw=copy.deepcopy(self.state.raw))
+        snapshot = PrinterState(raw=copy.deepcopy(self.state.raw), modules=dict(self.state.modules))
         name = self.recorder.observe(snapshot)
         self.stateChanged.emit(snapshot)
         if name:
             self.event.emit(name, snapshot.job_name)
+        for a in self.health.observe(snapshot):
+            self.alert.emit(a)
 
     # --- control -------------------------------------------------------------
     @property

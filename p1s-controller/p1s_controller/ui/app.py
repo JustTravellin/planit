@@ -25,7 +25,7 @@ def main() -> None:
         window.settings.status.setText("Connecting…")
         bridge.connect_to(saved)
     else:
-        window.tabs.setCurrentWidget(window.settings)
+        window.open_wizard()
     sys.exit(app.exec())
 
 

@@ -129,3 +129,61 @@ def project_file(
             "ams_mapping": ams_mapping or [],
         }
     }
+
+
+# --- manual controls ----------------------------------------------------------
+MAX_JOG_MM = 100
+FAN_PINS = {"part": 1, "aux": 2, "chamber": 3}
+MIN_EXTRUDE_TEMP = 170
+
+
+def home() -> dict[str, Any]:
+    return gcode_line("G28")
+
+
+def auto_bed_level() -> dict[str, Any]:
+    return gcode_line("G29")
+
+
+def move(axis: str, mm: float, feed: int = 3000) -> dict[str, Any]:
+    """Relative jog of one axis. Restores absolute mode afterwards."""
+    axis = axis.upper()
+    if axis not in ("X", "Y", "Z"):
+        raise ValueError("axis must be X, Y or Z")
+    if mm == 0 or abs(mm) > MAX_JOG_MM:
+        raise ValueError(f"move must be non-zero and at most {MAX_JOG_MM} mm")
+    max_feed = 1200 if axis == "Z" else 9000
+    if not 60 <= feed <= max_feed:
+        raise ValueError(f"feed rate for {axis} must be between 60 and {max_feed} mm/min")
+    return gcode_line(f"G91\nG1 {axis}{mm:g} F{feed}\nG90")
+
+
+def set_fan(name: str, percent: int) -> dict[str, Any]:
+    if name not in FAN_PINS:
+        raise ValueError("fan must be part, aux or chamber")
+    if not 0 <= percent <= 100:
+        raise ValueError("fan speed must be 0-100%")
+    return gcode_line(f"M106 P{FAN_PINS[name]} S{round(percent * 255 / 100)}")
+
+
+def extrude(mm: float, nozzle_temp: float, feed: int = 300) -> dict[str, Any]:
+    """Extrude (positive) or retract (negative) filament. Refused with a cold nozzle."""
+    if nozzle_temp < MIN_EXTRUDE_TEMP:
+        raise ValueError(f"nozzle is too cold to extrude ({nozzle_temp:.0f} C, need {MIN_EXTRUDE_TEMP}+)")
+    if mm == 0 or abs(mm) > 50:
+        raise ValueError("extrude length must be non-zero and at most 50 mm")
+    return gcode_line(f"M83\nG1 E{mm:g} F{feed}")
+
+
+def ams_load(tray: int, nozzle_temp: int = 220) -> dict[str, Any]:
+    """Load filament from a global AMS tray index (ams*4+slot). Shape from community docs; unverified."""
+    if not 0 <= tray <= 15:
+        raise ValueError("tray must be 0-15")
+    return {"print": {"sequence_id": _next_seq(), "command": "ams_change_filament", "target": tray,
+                      "curr_temp": nozzle_temp, "tar_temp": nozzle_temp}}
+
+
+def ams_unload(nozzle_temp: int = 220) -> dict[str, Any]:
+    """Unload whatever is loaded (target 255). Shape from community docs; unverified."""
+    return {"print": {"sequence_id": _next_seq(), "command": "ams_change_filament", "target": 255,
+                      "curr_temp": nozzle_temp, "tar_temp": nozzle_temp}}

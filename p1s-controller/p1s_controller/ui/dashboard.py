@@ -8,6 +8,7 @@ from ..state import PrinterState
 from . import theme
 from .ams_panel import AmsPanel
 from .bridge import PrinterBridge
+from .camera_view import CameraView
 from .temp_graph import TempGraph
 from .util import eta_clock, fmt_minutes
 
@@ -44,6 +45,7 @@ class Dashboard(QWidget):
         self.speed = QComboBox()
         for name in commands.SPEED_LEVELS:
             self.speed.addItem(name.title(), commands.SPEED_LEVELS[name])
+        self.speed.setCurrentIndex(1)  # Standard until the printer reports otherwise
         self.nozzle_in = QSpinBox(); self.nozzle_in.setRange(0, 300); self.nozzle_in.setSuffix(" °C")
         self.bed_in = QSpinBox(); self.bed_in.setRange(0, 120); self.bed_in.setSuffix(" °C")
         self.set_nozzle = QPushButton("Set nozzle")
@@ -57,7 +59,11 @@ class Dashboard(QWidget):
         self.control_note.setWordWrap(True)
         grid.addWidget(self.control_note, 4, 0, 1, 2)
         left.addWidget(ctl)
-        left.addStretch(1)
+        cam = QGroupBox("Camera")
+        cl = QVBoxLayout(cam)
+        self.camera = CameraView(bridge)
+        cl.addWidget(self.camera)
+        left.addWidget(cam, 1)
         root.addLayout(left, 2)
 
         # ---- right column: temps + AMS

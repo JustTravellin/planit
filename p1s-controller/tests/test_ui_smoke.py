@@ -167,3 +167,130 @@ def test_terminal_requires_control(window, app):
     window.bridge.connected = True
     window.bridge.set_allow_control(True)
     assert t.input.isEnabled()
+
+
+# ---- new tabs: control, health, camera, wizard ---------------------------------
+
+class FakeClient:
+    def __init__(self):
+        self.sent = []
+        self.allow_control = True
+
+    def send(self, payload):
+        self.sent.append(payload)
+
+    def disconnect(self):
+        pass
+
+
+def connect_fake(window, allow=True):
+    b = window.bridge
+    b.client = FakeClient()
+    b.connected = True
+    b.set_allow_control(allow)
+    return b.client
+
+
+def test_control_tab_gating_and_jog(window, app, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: warnings.append(a[2])))
+    c = window.control
+    idle = {"print": {**REPORT["print"], "gcode_state": "IDLE", "nozzle_temper": 25}}
+    window.bridge._ingest(idle)
+    assert not c.home_btn.isEnabled()  # not connected, control off
+    client = connect_fake(window)
+    window.bridge._ingest(idle)
+    assert c.home_btn.isEnabled() and all(b.isEnabled() for b in c.jog_buttons)
+
+    c.jog_buttons[0].click()  # Y+ with default 1 mm step
+    assert client.sent[-1]["print"]["param"] == "G91\nG1 Y1 F3000\nG90\n"
+    c.home_btn.click()
+    assert client.sent[-1]["print"]["param"] == "G28\n"
+    c.fan_sliders["part"].setValue(50)
+    c.fan_sliders["part"].sliderReleased.emit()
+    assert client.sent[-1]["print"]["param"] == "M106 P1 S128\n"
+    n = len(client.sent)
+    c.extrude_btn.click()  # nozzle is 25 C: must be refused, with a warning box
+    assert len(client.sent) == n and "too cold" in warnings[-1]
+
+    load_buttons = [b for row in c._ams_rows for b in row.findChildren(type(c.home_btn)) if b.text() == "Load"]
+    assert len(load_buttons) == 4 and load_buttons[0].isEnabled() and not load_buttons[3].isEnabled()  # slot 4 empty
+    load_buttons[1].click()
+    assert client.sent[-1]["print"]["command"] == "ams_change_filament" and client.sent[-1]["print"]["target"] == 1
+
+    window.bridge._ingest(REPORT)  # RUNNING
+    assert not c.home_btn.isEnabled() and not any(b.isEnabled() for b in c.jog_buttons)
+    assert c.fan_sliders["part"].isEnabled()  # fans still allowed
+    assert "disabled while a print" in c.note.text()
+    window.tabs.setCurrentWidget(c)
+    shot(window, "control")
+
+
+def test_health_tab_shows_alerts_and_firmware(window, app):
+    report = {"print": {**REPORT["print"], "hms": [{"attr": 0x03000100, "code": 0x00010001}],
+                        "wifi_signal": "-82dBm"}}
+    window.bridge._ingest(report)
+    window.bridge._ingest({"info": {"command": "get_version", "module": [
+        {"name": "ota", "sw_ver": "01.08.02.00"}, {"name": "ams/0", "sw_ver": "00.00.06.49"}]}})
+    h = window.health
+    titles = [h.alerts.item(r, 1).text() for r in range(h.alerts.rowCount())]
+    assert any("0300_0100_0001_0001" in t for t in titles)
+    assert any("Weak Wi-Fi" in t for t in titles)
+    assert h.fw.rowCount() == 2 and h.fw.item(0, 0).text() == "ams/0"
+    assert "error" in h.summary.text()
+    assert "-82" in h.info.text()
+    window.tabs.setCurrentWidget(h)
+    shot(window, "health")
+
+
+def test_camera_view_shows_frames_and_failures(window, app):
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QColor, QImage
+    img = QImage(640, 360, QImage.Format_RGB32)
+    img.fill(QColor("#3ea6ff"))
+    buf = QBuffer()
+    buf.open(QIODevice.WriteOnly)
+    img.save(buf, "JPEG")
+    cam = window.dashboard.camera
+    assert not cam.button.isEnabled()  # not connected yet
+    window.bridge.connected = True
+    window.bridge.connectionChanged.emit(True, "Connected")
+    assert cam.button.isEnabled()
+    cam._show_frame(bytes(buf.data()))
+    assert cam.snapshot.isEnabled() and not cam.image.pixmap().isNull()
+    cam._failed("ConnectionRefusedError: refused")
+    assert "Camera stopped" in cam.image.text() and cam.button.text() == "Start camera"
+    cam._show_frame(b"garbage")  # undecodable frames are ignored, not fatal
+    window.tabs.setCurrentWidget(window.dashboard)
+    shot(window, "dashboard_camera")
+
+
+def test_wizard_flow(window, app, monkeypatch):
+    from p1s_controller.ui import wizard
+    monkeypatch.setattr(wizard, "check_connection", lambda ip, serial, code: (False, "Can't reach 1.2.3.4 on port 8883"))
+    monkeypatch.setattr(wizard.config, "load", lambda *a, **k: None)
+    saved = []
+    monkeypatch.setattr(wizard.config, "save", lambda cfg, *a, **k: saved.append(cfg))
+    connected = []
+    window.bridge.connect_to = lambda cfg: connected.append(cfg)
+    w = wizard.SetupWizard(window.bridge, window)
+    w.show()
+    assert not w.details.isComplete()
+    w.details.ip.setText("192.168.1.50"); w.details.serial.setText("01P00A000000000"); w.details.code.setText("12345678")
+    assert w.details.isComplete()
+    w.next(); w.next()
+    assert not w.test.isComplete()
+    w.test.run_test()
+    w.test._thread.wait(3000)
+    QApplication.processEvents()
+    assert "✗" in w.test.result.text() and not w.test.isComplete()
+    monkeypatch.setattr(wizard, "check_connection", lambda ip, serial, code: (True, "Connected. The printer is answering."))
+    w.test.run_test()
+    w.test._thread.wait(3000)
+    QApplication.processEvents()
+    assert w.test.isComplete()
+    shot(w, "wizard")
+    w.accept()
+    assert saved[0].ip == "192.168.1.50" and connected[0].access_code == "12345678"

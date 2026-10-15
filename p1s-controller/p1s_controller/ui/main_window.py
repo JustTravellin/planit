@@ -8,11 +8,14 @@ from ..db import Database
 from . import theme
 from .bridge import PrinterBridge
 from .dashboard import Dashboard
+from .control_tab import ControlTab
 from .filament_tab import FilamentTab
+from .health_tab import HealthTab
 from .history_tab import HistoryTab
 from .library import Library
 from .settings_tab import SettingsTab
 from .terminal import Terminal
+from .wizard import SetupWizard
 
 EVENT_TEXT = {
     "started": "Print started", "paused": "Print paused", "resumed": "Print resumed",
@@ -29,13 +32,16 @@ class MainWindow(QMainWindow):
 
         self.dashboard = Dashboard(bridge)
         self.library = Library(bridge, db)
+        self.control = ControlTab(bridge)
         self.terminal = Terminal(bridge)
+        self.health = HealthTab(bridge)
         self.history = HistoryTab(bridge, db)
         self.filament = FilamentTab(bridge, db)
         self.settings = SettingsTab(bridge)
         tabs = QTabWidget()
-        for widget, title in ((self.dashboard, "Dashboard"), (self.library, "Library"), (self.terminal, "Terminal"),
-                              (self.history, "History"), (self.filament, "Filament"), (self.settings, "Settings")):
+        for widget, title in ((self.dashboard, "Dashboard"), (self.library, "Library"), (self.control, "Control"),
+                              (self.terminal, "Terminal"), (self.history, "History"), (self.filament, "Filament"),
+                              (self.health, "Health"), (self.settings, "Settings")):
             tabs.addTab(widget, title)
         self.tabs = tabs
         self.setCentralWidget(tabs)
@@ -63,6 +69,8 @@ class MainWindow(QMainWindow):
         self.control_box.toggled.connect(self._control_toggled)
         bridge.connectionChanged.connect(self._on_connection)
         bridge.event.connect(self._on_event)
+        bridge.alert.connect(self._on_alert)
+        self.settings.wizardRequested.connect(self.open_wizard)
 
     def _control_toggled(self, on: bool) -> None:
         if on:
@@ -85,3 +93,11 @@ class MainWindow(QMainWindow):
     def _on_event(self, event: str, job: str) -> None:
         if self.tray and self.settings.notify.isChecked() and event in EVENT_TEXT:
             self.tray.showMessage(EVENT_TEXT[event], job or "", QSystemTrayIcon.Information, 8000)
+
+    def _on_alert(self, alert) -> None:
+        if self.tray and self.settings.notify.isChecked():
+            icon = QSystemTrayIcon.Critical if alert.severity == "error" else QSystemTrayIcon.Warning
+            self.tray.showMessage(alert.title, alert.detail, icon, 10000)
+
+    def open_wizard(self) -> None:
+        SetupWizard(self.bridge, self).exec()
