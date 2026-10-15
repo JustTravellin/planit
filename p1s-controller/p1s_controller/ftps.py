@@ -33,6 +33,21 @@ class _ImplicitFtpTls(ftplib.FTP_TLS):
         return conn, size
 
 
+    def storbinary(self, cmd, fp, blocksize=8192, callback=None, rest=None):
+        """Like FTP_TLS.storbinary, but without the TLS unwrap: the printer never answers the close
+        notify, so the stock version hangs after the whole file has been stored."""
+        self.voidcmd("TYPE I")
+        with self.transfercmd(cmd, rest) as conn:
+            while True:
+                buf = fp.read(blocksize)
+                if not buf:
+                    break
+                conn.sendall(buf)
+                if callback:
+                    callback(buf)
+        return self.voidresp()
+
+
 def upload(ip: str, access_code: str, local_path: str | Path, remote_name: str | None = None, timeout: float = 30.0,
            progress: Callable[[int, int], None] | None = None) -> str:
     """Upload a file to the printer and return the remote file name."""
