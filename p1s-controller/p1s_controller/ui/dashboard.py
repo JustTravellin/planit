@@ -112,8 +112,8 @@ class Dashboard(QWidget):
             self.detail.setText("")
         self.temp_label.setText(
             f"Nozzle {s.nozzle_temp:.0f}/{s.nozzle_target:.0f} °C   "
-            f"Bed {s.bed_temp:.0f}/{s.bed_target:.0f} °C   Chamber {s.chamber_temp:.0f} °C")
-        self.graph.add_sample(s.nozzle_temp, s.bed_temp, s.chamber_temp, s.nozzle_target, s.bed_target)
+            f"Bed {s.bed_temp:.0f}/{s.bed_target:.0f} °C")
+        self.graph.add_sample(s.nozzle_temp, s.bed_temp, float("nan"), s.nozzle_target, s.bed_target)
         self.ams.update_trays(s.ams_trays, s.active_tray)
         if not self.nozzle_in.hasFocus() and s.nozzle_target:
             self.nozzle_in.setValue(int(s.nozzle_target))

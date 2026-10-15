@@ -15,14 +15,14 @@ def _summary(s: PrinterState) -> str:
     lines = [
         f"State:    {s.gcode_state}  {s.percent}%  layer {s.layer}/{s.total_layers}  {s.remaining_minutes} min left",
         f"Job:      {s.job_name or '-'}",
-        f"Nozzle:   {s.nozzle_temp:.0f}/{s.nozzle_target:.0f} C   Bed: {s.bed_temp:.0f}/{s.bed_target:.0f} C   Chamber: {s.chamber_temp:.0f} C",
+        f"Nozzle:   {s.nozzle_temp:.0f}/{s.nozzle_target:.0f} C   Bed: {s.bed_temp:.0f}/{s.bed_target:.0f} C",
         f"Light:    {s.chamber_light_on}   Speed level: {s.speed_level}",
         f"Fans:     {s.fans}",
     ]
     active = s.active_tray
     for t in s.ams_trays:
         marker = "*" if t.global_index == active else " "
-        label = f"{t.material} #{t.color} {t.remain}%" if not t.empty else "empty"
+        label = "empty" if t.empty else f"{t.material} #{t.color} {t.remain}%" if t.remain >= 0 else f"{t.material} #{t.color} ?"
         lines.append(f"AMS{t.ams_id + 1} slot {t.slot + 1}{marker}: {label}")
     return "\n".join(lines)
 
