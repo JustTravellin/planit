@@ -37,6 +37,7 @@ class PlateInfo:
     bed: tuple[float, float] = (256.0, 256.0)
     max_height: float = 256.0
     filament_colors: list[str] = field(default_factory=list)  # "RRGGBB" per extruder
+    extruders: int = 1  # how many filaments the objects actually use
 
 
 @dataclass
@@ -50,6 +51,11 @@ class Mesh:
 
 def read(path: str | Path, require_gcode: bool = True) -> PlateInfo:
     info = PlateInfo()
+    if Path(path).suffix.lower() == ".stl":
+        if not require_gcode:
+            info.sliced = False
+            return info
+        raise ValueError("A plain STL has no sliced G-code.")
     with zipfile.ZipFile(path) as zf:
         names = set(zf.namelist())
         if "Metadata/slice_info.config" in names:
@@ -60,6 +66,10 @@ def read(path: str | Path, require_gcode: bool = True) -> PlateInfo:
                 break
         if "Metadata/project_settings.config" in names:
             _parse_settings(zf.read("Metadata/project_settings.config"), info)
+        if "Metadata/model_settings.config" in names:
+            for m in ET.fromstring(zf.read("Metadata/model_settings.config")).iterfind("./object/metadata"):
+                if m.get("key") == "extruder":
+                    info.extruders = max(info.extruders, int(m.get("value") or 1))
         info.sliced = any(n.startswith("Metadata/plate_") and n.endswith(".gcode") for n in names)
         if require_gcode and not info.sliced:
             raise ValueError("No sliced G-code found. Export the plate as .gcode.3mf from your slicer, not a plain .3mf.")
@@ -165,8 +175,28 @@ def _mesh_of(obj) -> tuple[np.ndarray, np.ndarray] | None:
     return v, t
 
 
+def read_stl(path: str | Path) -> list[Mesh]:
+    """A single STL (binary or ASCII), dropped on the middle of a 256 mm plate until the slicer arranges it."""
+    data = Path(path).read_bytes()
+    if len(data) >= 84 and 84 + 50 * int.from_bytes(data[80:84], "little") == len(data):
+        rec = np.frombuffer(data[84:], dtype=np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")]))
+        tri_pts = rec["v"].reshape(-1, 3)
+    else:
+        pts = [[float(x) for x in line.split()[1:4]] for line in data.decode("utf-8", "replace").splitlines()
+               if line.strip().startswith("vertex")]
+        tri_pts = np.array(pts, dtype=np.float32).reshape(-1, 3)
+    if len(tri_pts) == 0:
+        raise ValueError("No triangles found in the STL")
+    verts, inverse = np.unique(tri_pts, axis=0, return_inverse=True)
+    lo, hi = verts.min(axis=0), verts.max(axis=0)
+    verts = verts - np.array([(lo[0] + hi[0]) / 2 - 128, (lo[1] + hi[1]) / 2 - 128, lo[2]], dtype=np.float32)
+    return [Mesh(Path(path).stem, verts.astype(np.float32), inverse.reshape(-1, 3).astype(np.int32))]
+
+
 def read_meshes(path: str | Path, plate: int = 1) -> list[Mesh]:
-    """Objects of a plate, placed as the slicer placed them. Works for sliced and unsliced 3MF."""
+    """Objects of a plate, placed as the slicer placed them. Works for sliced and unsliced 3MF, and STL."""
+    if Path(path).suffix.lower() == ".stl":
+        return read_stl(path)
     with zipfile.ZipFile(path) as zf:
         names = set(zf.namelist())
         root = ET.fromstring(zf.read("3D/3dmodel.model"))

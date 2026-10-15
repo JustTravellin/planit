@@ -14,6 +14,7 @@ your LAN.
 | `.gcode.3mf` reader and AMS slot suggestion | Done |
 | CLI | Done |
 | 3D plate view (model on the plate, fit check, sliced layer view), sidebar UI | Done; verified with real 3MF files (OpenGL). Sliced view only tested with synthetic G-code |
+| **Slicing for the P1S** (Library, Slice section): runs the installed Bambu Studio's slicing engine headless with the stock P1S profiles, AMS spool to filament mapping, infill/walls/supports/plate/brim options, and slicing advice | Done; tested against a real Bambu Studio 02.08 install |
 | Desktop window: dashboard, temperature graph, AMS, file library, layer preview, send-and-print, terminal, history, filament inventory, notifications | Done; tested offscreen with recorded data |
 | Manual controls (jog, home, bed level, fans, extrude, AMS load/unload) | Done; tested offscreen against a fake printer connection |
 | Health tab and alerts (HMS codes, print errors, low filament, temperature, Wi-Fi, firmware list) | Done; tested with recorded reports |
@@ -107,3 +108,12 @@ This installs PyInstaller, builds `dist\P1S Controller\`, and (if Inno Setup 6 i
 ```
 pytest
 ```
+
+
+## Slicing
+
+The Library tab slices `.3mf` projects and `.stl` files for the P1S. It does not contain its own slicing engine:
+it drives the Bambu Studio you already have installed (set `P1S_SLICER` to its .exe if it is somewhere unusual),
+so the G-code is what Bambu Studio itself would produce. The P1S uses the X1C process presets and P1S/X1C
+filament presets; the app reads them from the install, picks the filament preset that matches each AMS spool,
+and writes `<name>.gcode.3mf` next to the model. Bambu Studio is a separate program with its own licence.

@@ -1,6 +1,7 @@
 """Minimal G-code reader that extracts extrusion moves per layer, for the layer preview."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 Segment = tuple[float, float, float, float]
@@ -16,7 +17,7 @@ class GcodeLayers:
 def _args(parts: list[str]) -> dict[str, float]:
     out: dict[str, float] = {}
     for p in parts:
-        if len(p) > 1 and p[0] in "XYZE":
+        if len(p) > 1 and p[0] in "XYZEIJ":
             try:
                 out[p[0]] = float(p[1:])
             except ValueError:
@@ -24,24 +25,40 @@ def _args(parts: list[str]) -> dict[str, float]:
     return out
 
 
+def _arc(x: float, y: float, nx: float, ny: float, i: float, j: float, clockwise: bool) -> list[Segment]:
+    """G2/G3 arc (centre offset I, J from the start) as short straight pieces. Bambu's slicer emits these."""
+    cx, cy = x + i, y + j
+    a0, a1 = math.atan2(y - cy, x - cx), math.atan2(ny - cy, nx - cx)
+    sweep = (a0 - a1) % (2 * math.pi) if clockwise else (a1 - a0) % (2 * math.pi)
+    if sweep == 0:
+        sweep = 2 * math.pi
+    sweep = -sweep if clockwise else sweep
+    r = math.hypot(i, j)
+    n = max(1, int(abs(sweep) / 0.4) + 1)
+    pts = [(cx + r * math.cos(a0 + sweep * k / n), cy + r * math.sin(a0 + sweep * k / n)) for k in range(n)]
+    pts.append((nx, ny))
+    pts[0] = (x, y)
+    return [(p[0], p[1], q[0], q[1]) for p, q in zip(pts, pts[1:])]
+
+
 def parse(text: str) -> GcodeLayers:
     x = y = z = e = 0.0
     abs_xyz = abs_e = True
-    marker_mode = ";LAYER_CHANGE" in text
+    marker_mode = ";LAYER_CHANGE" in text or "; CHANGE_LAYER" in text
     layers: list[list[Segment]] = [[]]
     heights: list[float] = [0.0]
 
     for raw in text.splitlines():
         stripped = raw.strip()
         if marker_mode:
-            if stripped == ";LAYER_CHANGE":
+            if stripped in (";LAYER_CHANGE", "; CHANGE_LAYER"):
                 if layers[-1]:
                     layers.append([])
                     heights.append(z)
                 continue
-            if stripped.startswith(";Z:"):
+            if stripped.startswith((";Z:", "; Z_HEIGHT:")):
                 try:
-                    heights[-1] = float(stripped[3:])
+                    heights[-1] = float(stripped.split(":", 1)[1])
                 except ValueError:
                     pass
                 continue
@@ -66,7 +83,9 @@ def parse(text: str) -> GcodeLayers:
                 heights.append(nz)
             if not marker_mode and not layers[-1]:
                 heights[-1] = nz
-            if de > 0 and (nx != x or ny != y):
+            if de > 0 and cmd in ("G2", "G3") and "I" in a and "J" in a:
+                layers[-1].extend(_arc(x, y, nx, ny, a["I"], a["J"], cmd == "G2"))
+            elif de > 0 and (nx != x or ny != y):
                 layers[-1].append((x, y, nx, ny))
             x, y, z = nx, ny, nz
         elif cmd == "G90":
@@ -82,6 +101,9 @@ def parse(text: str) -> GcodeLayers:
             if "E" in a:
                 e = a["E"]
 
+    if len(layers) > 1 and heights[0] == 0.0:  # start-up purge line before the first layer marker
+        layers[1][:0] = layers[0]
+        del layers[0], heights[0]
     while layers and not layers[-1]:
         layers.pop()
         heights.pop()

@@ -56,3 +56,16 @@ def test_fit_report():
     assert ok.size == (50, 60, 30)
     bad = plate.fit_report(np.array([-5, 0, 0]), np.array([260, 10, 300]))
     assert not bad.fits and len(bad.issues) == 3  # left, right, too tall
+
+
+def test_gcode_bambu_markers_and_arcs():
+    from p1s_controller import gcode
+    text = ("G90\nM83\n; CHANGE_LAYER\n; Z_HEIGHT: 0.2\nG1 Z2.0\nG1 X10 Y0\n"
+            "G3 X0 Y10 I-10 J0 E1\n"  # quarter circle ccw round the origin
+            "; CHANGE_LAYER\n; Z_HEIGHT: 0.4\nG1 Z0.4\nG1 X5 Y5 E1\n")
+    g = gcode.parse(text)
+    assert g.heights == [0.2, 0.4]  # the z-hop in layer 1 is not a layer
+    assert len(g.layers[0]) > 3  # arc was broken into pieces
+    x0, y0, x1, y1 = g.layers[0][-1]
+    assert (round(x1, 6), round(y1, 6)) == (0, 10)
+    assert all(abs(((s[0]) ** 2 + (s[1]) ** 2) ** 0.5 - 10) < 0.5 for s in g.layers[0])

@@ -73,6 +73,8 @@ class _Canvas(QWidget):
 
 
 class PlatePreview(QWidget):
+    fitUpdated = Signal(object)  # plate.FitReport | None
+
     def __init__(self, parent=None, use_gl: bool | None = None):
         super().__init__(parent)
         self._thread: _LoadThread | None = None
@@ -225,6 +227,7 @@ class PlatePreview(QWidget):
                 text = (f"<span style='color:{theme.BAD}'>✖ Does not fit: {'; '.join(self.fit.issues)}</span>"
                         f" · {dims}")
         self.fit_label.setText(text)
+        self.fitUpdated.emit(self.fit)
         self._frame()
 
     def _frame(self) -> None:

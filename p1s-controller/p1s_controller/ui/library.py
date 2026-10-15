@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QPushButton, QSplitter, QVBoxLayout, QWidget)
+                               QFrame, QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget)
 
 from .. import threemf
 from ..db import Database
@@ -13,6 +13,7 @@ from . import theme
 from .bridge import PrinterBridge
 from .gcode_preview import PlatePreview
 from .send_dialog import SendDialog
+from .slice_panel import SlicePanel
 from .util import fmt_seconds
 
 
@@ -45,7 +46,6 @@ class Library(QWidget):
 
         inspector = QWidget()
         inspector.setObjectName("inspector")
-        inspector.setFixedWidth(300)
         sl = QVBoxLayout(inspector)
         self.title = QLabel("Select a file")
         self.title.setObjectName("big")
@@ -61,20 +61,31 @@ class Library(QWidget):
         self.tags = QLineEdit(placeholderText="Tags, comma separated")
         self.send_btn = QPushButton("Send / print…")
         self.send_btn.setObjectName("primary")
+        self.slice_panel = SlicePanel(bridge)
         for text, w in (("", self.title), ("", self.status), ("PRINT", self.details), ("PROCESS", self.process),
-                        ("TAGS", self.tags)):
+                        ("SLICE", self.slice_panel), ("TAGS", self.tags)):
             if text:
                 head = QLabel(text)
                 head.setObjectName("section")
                 sl.addWidget(head)
             sl.addWidget(w)
         sl.addStretch(1)
-        sl.addWidget(self.send_btn)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(inspector)
+        scroll.setFixedWidth(330)
+        right = QWidget()
+        right.setObjectName("inspector")
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 10)
+        rl.addWidget(scroll, 1)
+        rl.addWidget(self.send_btn)
 
         split = QSplitter()
         split.addWidget(self.list)
         split.addWidget(self.preview)
-        split.addWidget(inspector)
+        split.addWidget(right)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
         split.setStretchFactor(2, 0)
@@ -88,6 +99,8 @@ class Library(QWidget):
         self.search.textChanged.connect(self._apply_filter)
         self.list.currentItemChanged.connect(self._selected)
         self.tags.editingFinished.connect(self._save_tags)
+        self.preview.fitUpdated.connect(self._fit_updated)
+        self.slice_panel.sliced.connect(self._sliced)
         self.send_btn.clicked.connect(self._send)
         self.send_btn.setEnabled(False)
         self.tags.setEnabled(False)
@@ -115,14 +128,14 @@ class Library(QWidget):
         self.folder_label.setText(str(folder) if folder else "No folder chosen")
         if not folder or not folder.is_dir():
             return
-        files = sorted(folder.glob("*.3mf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        files = sorted([*folder.glob("*.3mf"), *folder.glob("*.stl")], key=lambda p: p.stat().st_mtime, reverse=True)
         for path in files:
             try:
                 info = threemf.read(path, require_gcode=False)
             except Exception:
                 continue  # not a readable 3MF
             self.infos[str(path)] = info
-            name = path.name.removesuffix(".gcode.3mf").removesuffix(".3mf")
+            name = path.name.removesuffix(".gcode.3mf").removesuffix(".3mf").removesuffix(".stl")
             sub = f"{fmt_seconds(info.print_seconds)} · {info.weight_grams:.0f} g" if info.sliced else "Not sliced"
             item = QListWidgetItem(f"{name}" + chr(10) + sub)
             item.setData(Qt.UserRole, str(path))
@@ -183,8 +196,22 @@ class Library(QWidget):
         self.send_btn.setEnabled(info.sliced)
         self.tags.setEnabled(True)
         self.preview.set_bed(info.bed, info.max_height)
+        self.slice_panel.set_model(Path(path), info.extruders, None)
         self.preview.colors = ["#" + c for c in info.filament_colors]
         self.preview.load(Path(path), info.plate, info.sliced)
+
+    def _fit_updated(self, fit) -> None:
+        self.slice_panel.fit = fit
+        self.slice_panel.refresh_advice()
+
+    def _sliced(self, result) -> None:
+        self.reload()
+        for i in range(self.list.count()):
+            if Path(self.list.item(i).data(Qt.UserRole)) == result.path:
+                self.list.setCurrentRow(i)
+                self.preview.wait()
+                self.preview.sliced_btn.click()
+                break
 
     def _save_tags(self) -> None:
         path = self.current_path()
