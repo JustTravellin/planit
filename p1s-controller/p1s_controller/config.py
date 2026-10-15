@@ -82,3 +82,40 @@ def load(directory: Path | None = None) -> PrinterConfig | None:
 
 def as_dict(cfg: PrinterConfig) -> dict:
     return asdict(cfg)
+
+
+# ---- notification settings (the token/URL is a credential, so it follows the access code's storage) ----------
+def save_notify(cfg, directory: Path | None = None) -> None:
+    directory = directory or config_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    meta = {"kind": cfg.kind, "target": cfg.target, "events": cfg.events}
+    kr = _keyring()
+    stored = False
+    if kr is not None and cfg.secret:
+        try:
+            kr.set_password(_KEYRING_SERVICE, "notify", cfg.secret)
+            stored = True
+        except Exception:
+            stored = False
+    if cfg.secret and not stored:
+        meta["secret"] = cfg.secret
+    path = directory / "notify.json"
+    path.write_text(json.dumps(meta, indent=2))
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def load_notify(directory: Path | None = None):
+    from .notify import NotifyConfig
+
+    path = (directory or config_dir()) / "notify.json"
+    if not path.exists():
+        return NotifyConfig()
+    meta = json.loads(path.read_text())
+    secret = meta.get("secret")
+    if secret is None:
+        kr = _keyring()
+        secret = (kr.get_password(_KEYRING_SERVICE, "notify") if kr is not None else "") or ""
+    return NotifyConfig(meta.get("kind", ""), meta.get("target", ""), secret, meta.get("events", []))

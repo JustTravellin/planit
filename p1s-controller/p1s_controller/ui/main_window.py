@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap, QColor
 from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QListWidget, QMainWindow, QMessageBox, QStackedWidget,
                                QSystemTrayIcon, QToolBar, QWidget, QSizePolicy)
 
+from .. import notify
 from ..db import Database
 from . import theme
 from .bridge import PrinterBridge
@@ -14,6 +17,8 @@ from .filament_tab import FilamentTab
 from .health_tab import HealthTab
 from .history_tab import HistoryTab
 from .library import Library
+from .maintenance_tab import MaintenanceTab
+from .queue_tab import QueueTab
 from .settings_tab import SettingsTab
 from .terminal import Terminal
 from .wizard import SetupWizard
@@ -67,6 +72,8 @@ class MainWindow(QMainWindow):
 
         self.dashboard = Dashboard(bridge)
         self.library = Library(bridge, db)
+        self.queue = QueueTab(bridge, db)
+        self.maintenance = MaintenanceTab(bridge, db)
         self.control = ControlTab(bridge)
         self.terminal = Terminal(bridge)
         self.health = HealthTab(bridge)
@@ -74,9 +81,9 @@ class MainWindow(QMainWindow):
         self.filament = FilamentTab(bridge, db)
         self.settings = SettingsTab(bridge)
         tabs = SideTabs()
-        for widget, title in ((self.dashboard, "Dashboard"), (self.library, "Library"), (self.control, "Control"),
+        for widget, title in ((self.dashboard, "Dashboard"), (self.library, "Library"), (self.queue, "Queue"), (self.control, "Control"),
                               (self.terminal, "Terminal"), (self.history, "History"), (self.filament, "Filament"),
-                              (self.health, "Health"), (self.settings, "Settings")):
+                              (self.health, "Health"), (self.maintenance, "Maintenance"), (self.settings, "Settings")):
             tabs.addTab(widget, title)
         self.tabs = tabs
         self.setCentralWidget(tabs)
@@ -115,6 +122,11 @@ class MainWindow(QMainWindow):
         bridge.event.connect(self._on_event)
         bridge.alert.connect(self._on_alert)
         self.settings.wizardRequested.connect(self.open_wizard)
+        self.notify_cfg = self.settings.notify_config()
+        self.settings.notifyChanged.connect(lambda cfg: setattr(self, "notify_cfg", cfg))
+        self.library.queued.connect(lambda path: (self.queue.add(path), None))
+        self.queue.message.connect(lambda title, text: self._announce(title, text))
+        self.maintenance.message.connect(lambda title, text: self._announce(title, text))
 
     def _control_toggled(self, on: bool) -> None:
         if on:
@@ -143,11 +155,33 @@ class MainWindow(QMainWindow):
         self.state_chip.setStyleSheet(f"color: {color}; border: 1px solid {color};")
         self.state_chip.show()
 
+    def _announce(self, title: str, text: str) -> None:
+        """Desktop toast plus the phone/chat service, for messages that are not print events."""
+        if self.tray and self.settings.notify.isChecked():
+            self.tray.showMessage(title, text, QSystemTrayIcon.Information, 10000)
+        self._push(title, text, always=True)
+
+    def _push(self, title: str, text: str, event: str | None = None, always: bool = False) -> None:
+        cfg = self.notify_cfg
+        if not cfg.enabled or not (always or (event and cfg.wants(event))):
+            return
+
+        def run() -> None:
+            try:
+                notify.send(cfg, title, text)
+            except Exception as exc:  # never break the UI over a failed push
+                print(f"notification failed: {exc}")
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _on_event(self, event: str, job: str) -> None:
+        if event in EVENT_TEXT:
+            self._push(EVENT_TEXT[event], job or "", event=event)
         if self.tray and self.settings.notify.isChecked() and event in EVENT_TEXT:
             self.tray.showMessage(EVENT_TEXT[event], job or "", QSystemTrayIcon.Information, 8000)
 
     def _on_alert(self, alert) -> None:
+        self._push(alert.title, alert.detail, always=True)
         if self.tray and self.settings.notify.isChecked():
             icon = QSystemTrayIcon.Critical if alert.severity == "error" else QSystemTrayIcon.Warning
             self.tray.showMessage(alert.title, alert.detail, icon, 10000)

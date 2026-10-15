@@ -297,3 +297,32 @@ def test_wizard_flow(window, app, monkeypatch):
     shot(w, "wizard")
     w.accept()
     assert saved[0].ip == "192.168.1.50" and connected[0].access_code == "12345678"
+
+
+def test_queue_flow_and_maintenance(window, app, monkeypatch):
+    import p1s_controller.ui.queue_tab as qt
+    q = window.queue
+    window.library.list.setCurrentRow(0)
+    window.library.preview.wait()
+    window.library.queue_btn.click()  # Library -> Queue
+    assert q.table.rowCount() == 1 and q.start.isEnabled()
+    messages = []
+    q.message.connect(lambda t, x: messages.append((t, x)))
+
+    class FakeDialog:
+        started = True
+        def __init__(self, *a): pass
+        def exec(self): return 1
+    monkeypatch.setattr(qt, "SendDialog", FakeDialog)
+    q.start_next()
+    assert q.db.queue_sent()["name"] == "benchy" and not q.start.isEnabled()
+    window.bridge.event.emit("finished", "benchy")
+    assert q.table.item(0, 3).text() == "Done"
+    m = window.maintenance
+    pid = window.db.start_print("x", started_at=1)
+    window.db.finish_print(pid, "finished", ended_at=30 * 3600 + 1)
+    got = []
+    m.message.connect(lambda t, x: got.append(t))
+    m.check()
+    assert got == ["Maintenance due"] * 2 and "30.0 print hours" in m.total.text()
+    shot(window, "maintenance")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QSize
+from PySide6.QtCore import QSettings, Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QFrame, QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget)
@@ -18,6 +18,8 @@ from .util import fmt_seconds
 
 
 class Library(QWidget):
+    queued = Signal(object)  # Path
+
     def __init__(self, bridge: PrinterBridge, db: Database, settings: QSettings | None = None, parent=None):
         super().__init__(parent)
         self.bridge, self.db = bridge, db
@@ -61,6 +63,7 @@ class Library(QWidget):
         self.tags = QLineEdit(placeholderText="Tags, comma separated")
         self.send_btn = QPushButton("Send / print…")
         self.send_btn.setObjectName("primary")
+        self.queue_btn = QPushButton("Add to queue")
         self.slice_panel = SlicePanel(bridge)
         for text, w in (("", self.title), ("", self.status), ("PRINT", self.details), ("PROCESS", self.process),
                         ("SLICE", self.slice_panel), ("TAGS", self.tags)):
@@ -80,7 +83,11 @@ class Library(QWidget):
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 10)
         rl.addWidget(scroll, 1)
-        rl.addWidget(self.send_btn)
+        brow = QHBoxLayout()
+        brow.setContentsMargins(10, 0, 10, 0)
+        brow.addWidget(self.queue_btn)
+        brow.addWidget(self.send_btn, 1)
+        rl.addLayout(brow)
 
         split = QSplitter()
         split.addWidget(self.list)
@@ -102,7 +109,9 @@ class Library(QWidget):
         self.preview.fitUpdated.connect(self._fit_updated)
         self.slice_panel.sliced.connect(self._sliced)
         self.send_btn.clicked.connect(self._send)
+        self.queue_btn.clicked.connect(self._queue)
         self.send_btn.setEnabled(False)
+        self.queue_btn.setEnabled(False)
         self.tags.setEnabled(False)
         self.reload()
 
@@ -167,6 +176,7 @@ class Library(QWidget):
             self.process.setText("")
             self.status.setText("")
             self.send_btn.setEnabled(False)
+            self.queue_btn.setEnabled(False)
             self.tags.setEnabled(False)
             self.preview.clear()
             return
@@ -194,6 +204,7 @@ class Library(QWidget):
                                          for k, v in rows if v) or "—")
         self.tags.setText(self.db.get_tags(path))
         self.send_btn.setEnabled(info.sliced)
+        self.queue_btn.setEnabled(info.sliced)
         self.tags.setEnabled(True)
         self.preview.set_bed(info.bed, info.max_height)
         self.slice_panel.set_model(Path(path), info.extruders, None)
@@ -218,6 +229,12 @@ class Library(QWidget):
         if path:
             self.db.set_tags(str(path), self.tags.text())
             self._apply_filter()
+
+    def _queue(self) -> None:
+        path = self.current_path()
+        if path:
+            self.queued.emit(path)
+            self.status.setText(f"<span style='color:{theme.OK}'>● Added to the print queue</span>")
 
     def _send(self) -> None:
         path = self.current_path()

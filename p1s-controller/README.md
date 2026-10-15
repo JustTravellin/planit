@@ -15,6 +15,7 @@ your LAN.
 | CLI | Done |
 | 3D plate view (model on the plate, fit check, sliced layer view), sidebar UI | Done; verified with real 3MF files (OpenGL). Sliced view only tested with synthetic G-code |
 | **Slicing for the P1S** (Library, Slice section): runs the installed Bambu Studio's slicing engine headless with the stock P1S profiles, AMS spool to filament mapping, infill/walls/supports/plate/brim options, and slicing advice | Done; tested against a real Bambu Studio 02.08 install |
+| Print queue (never auto-starts), maintenance reminders by print hours, Telegram/Discord/ntfy/webhook notifications | Done; tested with fakes. Real phone push not yet tried |
 | Desktop window: dashboard, temperature graph, AMS, file library, layer preview, send-and-print, terminal, history, filament inventory, notifications | Done; tested offscreen with recorded data |
 | Manual controls (jog, home, bed level, fans, extrude, AMS load/unload) | Done; tested offscreen against a fake printer connection |
 | Health tab and alerts (HMS codes, print errors, low filament, temperature, Wi-Fi, firmware list) | Done; tested with recorded reports |

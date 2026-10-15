@@ -116,6 +116,7 @@ class SendDialog(QDialog):
         cancel.clicked.connect(self.reject)
         self.go.clicked.connect(self._go)
         self._thread: _UploadThread | None = None
+        self.started = False
         self._refresh()
 
     def mapping(self) -> list[int | None]:
@@ -164,4 +165,5 @@ class SendDialog(QDialog):
             except Exception as exc:
                 QMessageBox.critical(self, "Could not start print", str(exc))
                 return
+            self.started = True
         self.accept()
